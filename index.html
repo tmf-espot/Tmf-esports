@@ -1,0 +1,1409 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>the mafia — chota esport</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;900&family=Rajdhani:wght@400;500;600;700&family=Inter:wght@300;400;500&display=swap" rel="stylesheet" />
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            neon: { purple: '#a855f7', cyan: '#22d3ee', pink: '#f0abfc', green: '#4ade80' },
+            dark: { base: '#0a0a0f', card: '#111118', border: '#1e1e2e', surface: '#16161f' }
+          },
+          fontFamily: {
+            orbitron: ['Orbitron', 'sans-serif'],
+            rajdhani: ['Rajdhani', 'sans-serif'],
+            inter: ['Inter', 'sans-serif']
+          }
+        }
+      }
+    }
+  </script>
+  <!-- Firebase SDK -->
+  <!-- Firebase CDN (compat version — module nahi, direct global use) -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyAAo24v9536_ySSB7_5QQ24lU3qZlLXacI",
+      authDomain: "mafiyas.firebaseapp.com",
+      databaseURL: "https://mafiyas-default-rtdb.firebaseio.com",
+      projectId: "mafiyas",
+      storageBucket: "mafiyas.firebasestorage.app",
+      messagingSenderId: "340560309667",
+      appId: "1:340560309667:web:a097afb53d1c41af18be16"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    var _auth = firebase.auth();
+    var _db = firebase.firestore();
+
+    // Global fb() helper — always returns valid object
+    window._fb = {
+      auth: _auth,
+      db: _db,
+      // Auth functions
+      createUserWithEmailAndPassword: (auth, email, pass) => auth.createUserWithEmailAndPassword(email, pass),
+      signInWithEmailAndPassword: (auth, email, pass) => auth.signInWithEmailAndPassword(email, pass),
+      signOut: (auth) => auth.signOut(),
+      onAuthStateChanged: (auth, cb) => auth.onAuthStateChanged(cb),
+      // Firestore functions
+      doc: (db, ...path) => {
+        // path can be collection/doc/collection/doc...
+        let ref = db;
+        for (let i = 0; i < path.length; i++) {
+          if (i % 2 === 0) ref = ref.collection(path[i]);
+          else ref = ref.doc(path[i]);
+        }
+        return ref;
+      },
+      collection: (db, ...path) => {
+        let ref = db;
+        for (let i = 0; i < path.length; i++) {
+          if (i % 2 === 0) ref = ref.collection(path[i]);
+          else ref = ref.doc(path[i]);
+        }
+        return ref;
+      },
+      setDoc: (ref, data, opts) => opts && opts.merge ? ref.set(data, {merge:true}) : ref.set(data),
+      getDoc: (ref) => ref.get(),
+      updateDoc: (ref, data) => ref.update(data),
+      addDoc: (colRef, data) => colRef.add(data),
+      getDocs: (colRef) => colRef.get(),
+      deleteDoc: (ref) => ref.delete(),
+      query: (col, ...constraints) => col,
+      where: () => null,
+      orderBy: () => null
+    };
+
+    window._setupAuthListener = function() {
+      _auth.onAuthStateChanged(async (user) => {
+        if (user) {
+          try {
+            var snap = await _db.collection('users').doc(user.uid).get();
+            if (snap.exists) {
+              currentUser = { uid: user.uid, ...snap.data() };
+            } else {
+              currentUser = { uid: user.uid, email: user.email, username: user.email.split('@')[0], balance: 0, joined: [], transactions: [] };
+            }
+          } catch(e) {
+            currentUser = { uid: user.uid, email: user.email, username: user.email.split('@')[0], balance: 0, joined: [], transactions: [] };
+          }
+        } else {
+          currentUser = null;
+        }
+        try { if (typeof updateAuthUI === 'function') updateAuthUI(); } catch(e) {}
+        try { if (typeof refreshWalletSection === 'function') refreshWalletSection(); } catch(e) {}
+        try { if (typeof refreshProfileSection === 'function') refreshProfileSection(); } catch(e) {}
+        try { if (typeof renderTournaments === 'function') renderTournaments(); } catch(e) {}
+        try { if (typeof renderHomeTournaments === 'function') renderHomeTournaments(); } catch(e) {}
+      });
+    };
+  </script>
+
+  <style>
+    :root {
+      --bg: #0a0a0f; --card: #111118; --surface: #16161f; --border: #1e1e2e;
+      --purple: #a855f7; --cyan: #22d3ee; --pink: #f0abfc; --green: #4ade80;
+      --red: #f87171; --text: #e2e8f0; --muted: #64748b;
+    }
+    * { box-sizing: border-box; }
+    body { background: var(--bg); color: var(--text); font-family: 'Rajdhani', sans-serif; overflow-x: hidden; }
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: var(--bg); }
+    ::-webkit-scrollbar-thumb { background: var(--purple); border-radius: 2px; }
+
+    .neon-text { background: linear-gradient(135deg, #a855f7, #22d3ee); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+    .glass { background: rgba(17,17,24,0.85); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border: 1px solid rgba(168,85,247,0.15); }
+    .glow-card { box-shadow: 0 4px 30px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.05); }
+
+    .btn-neon { background: linear-gradient(135deg, #a855f7, #22d3ee); color: #0a0a0f; font-family: 'Orbitron', sans-serif; font-weight: 700; font-size: 0.75rem; letter-spacing: 0.05em; border: none; cursor: pointer; transition: all 0.3s; position: relative; overflow: hidden; }
+    .btn-neon:hover { transform: translateY(-2px); box-shadow: 0 10px 40px rgba(168,85,247,0.4); }
+    .btn-neon::after { content: ''; position: absolute; top: -50%; left: -60%; width: 30%; height: 200%; background: rgba(255,255,255,0.2); transform: skewX(-20deg); transition: left 0.5s; }
+    .btn-neon:hover::after { left: 130%; }
+    .btn-outline { border: 1px solid rgba(168,85,247,0.5); color: var(--purple); background: transparent; font-family: 'Orbitron', sans-serif; font-size: 0.7rem; letter-spacing: 0.05em; cursor: pointer; transition: all 0.3s; }
+    .btn-outline:hover { background: rgba(168,85,247,0.1); border-color: var(--purple); box-shadow: 0 0 15px rgba(168,85,247,0.2); }
+    .btn-danger { border: 1px solid rgba(248,113,113,0.5); color: var(--red); background: transparent; font-family: 'Orbitron', sans-serif; font-size: 0.7rem; letter-spacing: 0.05em; cursor: pointer; transition: all 0.3s; }
+    .btn-danger:hover { background: rgba(248,113,113,0.1); }
+
+    .progress-bar { height: 4px; background: rgba(255,255,255,0.06); border-radius: 2px; overflow: hidden; }
+    .progress-fill { height: 100%; background: linear-gradient(90deg, #a855f7, #22d3ee); border-radius: 2px; transition: width 0.5s ease; }
+
+    @keyframes pulseNeon { 0%,100%{box-shadow:0 0 10px rgba(168,85,247,0.4),0 0 30px rgba(168,85,247,0.1)}50%{box-shadow:0 0 25px rgba(168,85,247,0.7),0 0 60px rgba(168,85,247,0.3)}}
+    @keyframes shimmer { 0%{transform:translateX(-100%)}100%{transform:translateX(100%)}}
+    @keyframes float { 0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}}
+    @keyframes scan { 0%{top:0;opacity:1}90%{opacity:1}100%{top:100%;opacity:0}}
+    @keyframes fadeIn { from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+    @keyframes slideUp { from{opacity:0;transform:translateY(40px)}to{opacity:1;transform:translateY(0)}}
+    @keyframes gridMove { 0%{transform:translateY(0)}100%{transform:translateY(60px)}}
+    @keyframes rotate { from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+    @keyframes splashFade { from{opacity:1}to{opacity:0;pointer-events:none}}
+
+    .animate-fadeIn { animation: fadeIn 0.5s ease forwards; }
+    .animate-slideUp { animation: slideUp 0.4s ease forwards; }
+    .animate-float { animation: float 3s ease-in-out infinite; }
+
+    /* Splash */
+    #splash { position: fixed; inset: 0; z-index: 9999; background: var(--bg); display: flex; flex-direction: column; align-items: center; justify-content: center; transition: opacity 0.6s ease; }
+    #splash.hidden { opacity: 0; pointer-events: none; }
+    .splash-ring { width: 80px; height: 80px; border: 3px solid transparent; border-top-color: var(--purple); border-right-color: var(--cyan); border-radius: 50%; animation: rotate 0.8s linear infinite; }
+
+    /* Cyber grid */
+    .cyber-grid { position: fixed; inset: 0; pointer-events: none; z-index: 0; overflow: hidden; }
+    .cyber-grid::before { content: ''; position: absolute; inset: 0; background-image: linear-gradient(rgba(168,85,247,0.03) 1px,transparent 1px),linear-gradient(90deg,rgba(168,85,247,0.03) 1px,transparent 1px); background-size: 60px 60px; animation: gridMove 8s linear infinite; }
+    .scan-line { position: absolute; left: 0; right: 0; height: 1px; background: linear-gradient(90deg,transparent,rgba(34,211,238,0.5),transparent); animation: scan 4s linear infinite; }
+
+    /* Badges */
+    .badge-live { background: rgba(248,113,113,0.15); color: #f87171; border: 1px solid rgba(248,113,113,0.3); font-size: 0.65rem; letter-spacing: 0.1em; }
+    .badge-upcoming { background: rgba(34,211,238,0.12); color: #22d3ee; border: 1px solid rgba(34,211,238,0.3); font-size: 0.65rem; letter-spacing: 0.1em; }
+    .badge-completed { background: rgba(100,116,139,0.15); color: #64748b; border: 1px solid rgba(100,116,139,0.3); font-size: 0.65rem; letter-spacing: 0.1em; }
+
+    /* Nav */
+    .nav-link { color: var(--muted); font-family: 'Orbitron', sans-serif; font-size: 0.7rem; letter-spacing: 0.08em; transition: color 0.3s; cursor: pointer; }
+    .nav-link:hover, .nav-link.active { color: var(--purple); }
+    .nav-link.active { text-shadow: 0 0 10px rgba(168,85,247,0.5); }
+
+    /* Cards */
+    .tournament-card { background: var(--card); border: 1px solid var(--border); border-radius: 16px; overflow: hidden; transition: all 0.3s; position: relative; }
+    .tournament-card:hover { border-color: rgba(168,85,247,0.4); transform: translateY(-4px); box-shadow: 0 20px 60px rgba(0,0,0,0.4),0 0 30px rgba(168,85,247,0.1); }
+    .tournament-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px; background: linear-gradient(90deg,transparent,rgba(168,85,247,0.5),transparent); }
+
+    /* Modal */
+    .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.8); backdrop-filter: blur(8px); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 1rem; }
+    .modal-overlay.hide { display: none !important; }
+    .modal-box { background: var(--card); border: 1px solid rgba(168,85,247,0.2); border-radius: 20px; width: 100%; max-width: 480px; max-height: 90vh; overflow-y: auto; animation: slideUp 0.3s ease; }
+
+    /* Toast */
+    #toast-container { position: fixed; bottom: 2rem; right: 1rem; z-index: 9998; display: flex; flex-direction: column; gap: 0.5rem; }
+    .toast { padding: 0.75rem 1.25rem; border-radius: 10px; font-family: 'Rajdhani', sans-serif; font-weight: 600; font-size: 0.9rem; animation: slideUp 0.3s ease; backdrop-filter: blur(10px); border: 1px solid; min-width: 220px; }
+    .toast-success { background: rgba(74,222,128,0.1); border-color: rgba(74,222,128,0.3); color: #4ade80; }
+    .toast-error { background: rgba(248,113,113,0.1); border-color: rgba(248,113,113,0.3); color: #f87171; }
+    .toast-info { background: rgba(34,211,238,0.1); border-color: rgba(34,211,238,0.3); color: #22d3ee; }
+
+    /* Inputs */
+    .neon-input { background: var(--surface); border: 1px solid var(--border); color: var(--text); border-radius: 10px; padding: 0.75rem 1rem; font-family: 'Rajdhani', sans-serif; font-size: 1rem; width: 100%; transition: border-color 0.3s; outline: none; }
+    .neon-input:focus { border-color: var(--purple); box-shadow: 0 0 0 3px rgba(168,85,247,0.1); }
+    .neon-input::placeholder { color: var(--muted); }
+
+    .amount-btn { background: var(--surface); border: 1px solid var(--border); color: var(--text); border-radius: 10px; padding: 0.75rem; font-family: 'Orbitron', sans-serif; font-size: 0.8rem; cursor: pointer; transition: all 0.2s; }
+    .amount-btn:hover, .amount-btn.selected { background: rgba(168,85,247,0.15); border-color: var(--purple); color: var(--purple); }
+
+    /* Sections */
+    .page-section { display: none; }
+    .page-section.active { display: block; animation: fadeIn 0.4s ease; }
+
+    /* Balance */
+    .balance-card { background: linear-gradient(135deg,rgba(168,85,247,0.15),rgba(34,211,238,0.08)); border: 1px solid rgba(168,85,247,0.25); border-radius: 20px; position: relative; overflow: hidden; }
+    .balance-card::after { content: ''; position: absolute; top: -50%; right: -20%; width: 200px; height: 200px; background: radial-gradient(circle,rgba(168,85,247,0.15),transparent 70%); border-radius: 50%; pointer-events: none; }
+
+    /* Tx */
+    .tx-row { border-bottom: 1px solid var(--border); padding: 0.75rem 0; display: flex; justify-content: space-between; align-items: center; }
+    .tx-row:last-child { border-bottom: none; }
+
+    /* Hero */
+    .hero-bg { background: linear-gradient(135deg,#0a0a0f 0%,#0f0a1a 30%,#0a1020 60%,#0a0a0f 100%); position: relative; overflow: hidden; }
+    .hero-bg::before { content: ''; position: absolute; inset: 0; background: radial-gradient(ellipse 80% 50% at 50% 100%,rgba(168,85,247,0.12),transparent); }
+
+    .hide { display: none !important; }
+
+    .live-dot { width: 6px; height: 6px; border-radius: 50%; background: #f87171; display: inline-block; animation: pulseNeon 1.5s ease-in-out infinite; box-shadow: 0 0 6px #f87171; }
+
+    /* Mobile nav */
+    .mobile-nav { position: fixed; bottom: 0; left: 0; right: 0; background: rgba(17,17,24,0.97); backdrop-filter: blur(20px); border-top: 1px solid var(--border); z-index: 100; padding: 0.7rem 0 1.1rem; }
+    .mobile-nav-item { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; cursor: pointer; color: var(--muted); transition: all 0.3s; min-width: 0; }
+    .mobile-nav-item.active, .mobile-nav-item:hover { color: var(--purple); }
+    .mobile-nav-item.active svg { filter: drop-shadow(0 0 6px rgba(168,85,247,0.7)); }
+    .mobile-nav-item svg { width: 102px; height: 22px; flex-shrink: 0; }
+    .mobile-nav-item span { font-family: 'Orbitron', sans-serif; font-size: 0.5rem; letter-spacing: 0.06em; white-space: nowrap; }
+
+    /* Auth tabs */
+    .auth-tab { background: transparent; color: var(--muted); border: none; cursor: pointer; transition: all 0.3s; font-family: 'Orbitron', sans-serif; font-size: 0.75rem; font-weight: 700; }
+    .active-tab { color: var(--purple); background: rgba(168,85,247,0.1); }
+
+    /* QR */
+    .qr-container { background: white; border-radius: 16px; padding: 1rem; display: inline-block; }
+
+    /* Filter btn */
+    .active-filter { background: rgba(168,85,247,0.15) !important; color: var(--purple) !important; border-color: var(--purple) !important; }
+
+    /* My Tournament Tabs */
+    .my-t-tab { color: var(--muted); background: transparent; border: none; cursor: pointer; }
+    .active-my-tab { background: rgba(168,85,247,0.15); color: var(--purple); }
+
+    /* My Tournament Card */
+    .my-t-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; margin-bottom: 10px; cursor: pointer; transition: all 0.2s; }
+    .my-t-card:hover { border-color: rgba(168,85,247,0.4); background: rgba(168,85,247,0.05); }
+  </style>
+</head>
+<body>
+
+<!-- ===== SPLASH ===== -->
+<div id="splash">
+  <div class="text-center">
+    <div class="mx-auto mb-6 w-20 h-20 flex items-center justify-center animate-float">
+      <svg viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg" width="80" height="80">
+        <defs>
+          <linearGradient id="hexGrad" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#a855f7"/><stop offset="100%" stop-color="#22d3ee"/></linearGradient>
+          <linearGradient id="textGrad" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#a855f7"/><stop offset="100%" stop-color="#22d3ee"/></linearGradient>
+        </defs>
+        <polygon points="40,5 75,22 75,58 40,75 5,58 5,22" fill="rgba(168,85,247,0.1)" stroke="url(#hexGrad)" stroke-width="2"/>
+        <text x="40" y="44" text-anchor="middle" font-family="Orbitron" font-size="10" font-weight="900" fill="url(#textGrad)">MAFIA</text>
+      </svg>
+    </div>
+    <h1 class="font-orbitron text-2xl font-black neon-text mb-2">the mafia</h1>
+    <p class="text-slate-500 font-rajdhani text-sm tracking-widest uppercase">chota esport</p>
+    <div class="splash-ring mx-auto mt-8"></div>
+    <p class="text-slate-600 text-xs mt-4 font-inter" id="splash-msg">Initializing...</p>
+  </div>
+</div>
+
+<!-- Cyber Grid -->
+<div class="cyber-grid"><div class="scan-line"></div></div>
+
+<!-- Toast -->
+<div id="toast-container"></div>
+
+<!-- ===== HEADER ===== -->
+<header class="sticky top-0 z-50 glass border-b border-slate-800/50" id="main-header" style="display:none;">
+  <div class="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
+    <div class="flex items-center gap-3 cursor-pointer" onclick="showSection('home')">
+      <svg viewBox="0 0 40 40" width="36" height="36">
+        <defs>
+          <linearGradient id="hg" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#a855f7"/><stop offset="100%" stop-color="#22d3ee"/></linearGradient>
+          <linearGradient id="tg" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#a855f7"/><stop offset="100%" stop-color="#22d3ee"/></linearGradient>
+        </defs>
+        <polygon points="20,2 38,11 38,29 20,38 2,29 2,11" fill="rgba(168,85,247,0.1)" stroke="url(#hg)" stroke-width="1.5"/>
+        <text x="20" y="25" text-anchor="middle" font-family="Orbitron" font-size="9" font-weight="900" fill="url(#tg)">TMF</text>
+      </svg>
+      <div>
+        <span class="font-orbitron font-black text-base neon-text">THE MAFIA</span>
+        <div class="text-slate-600 font-rajdhani text-xs -mt-1 hidden sm:block">FREE FIRE HUB</div>
+      </div>
+    </div>
+    <nav class="hidden md:flex items-center gap-8">
+      <span class="nav-link active" onclick="showSection('home')" data-section="home">HOME</span>
+      <span class="nav-link" onclick="showSection('tournaments')" data-section="tournaments">TOURNAMENTS</span>
+      <span class="nav-link" onclick="showSection('wallet')" data-section="wallet">WALLET</span>
+      <span class="nav-link" onclick="showSection('profile')" data-section="profile">PROFILE</span>
+    </nav>
+    <div id="header-auth" class="flex items-center gap-3">
+      <div id="header-wallet-display" class="hidden items-center gap-2 px-3 py-1.5 rounded-lg" style="background:rgba(168,85,247,0.1);border:1px solid rgba(168,85,247,0.25);">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#a855f7" stroke-width="2"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4Z"/></svg>
+        <span class="font-orbitron text-xs text-purple-400" id="header-balance">₹0</span>
+      </div>
+      <button class="btn-outline px-4 py-2 rounded-lg hide" id="header-logout-btn" onclick="handleLogout()">LOGOUT</button>
+      <button class="btn-neon px-5 py-2 rounded-lg" id="header-login-btn" onclick="openModal('auth-modal')">LOGIN</button>
+    </div>
+  </div>
+</header>
+
+<!-- ===== MAIN ===== -->
+<main class="relative z-10 max-w-7xl mx-auto px-4 pb-24 md:pb-8" id="main-content" style="display:none;">
+
+  <!-- HOME -->
+  <section id="section-home" class="page-section active">
+    <div class="hero-bg rounded-2xl mt-4 p-8 md:p-14 text-center relative mb-8" style="min-height:320px;">
+      <div class="relative z-10">
+        <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full mb-4" style="background:rgba(168,85,247,0.1);border:1px solid rgba(168,85,247,0.3);">
+          <span class="live-dot"></span>
+          <span class="font-orbitron text-xs text-purple-300 tracking-widest">LIVE MATCHES AVAILABLE</span>
+        </div>
+        <h1 class="font-orbitron font-black text-3xl md:text-5xl mb-4 leading-tight">
+          <span class="neon-text">JOIN LIVE</span><br>
+          <span class="text-white">FREE FIRE MATCHES</span>
+        </h1>
+        <p class="font-rajdhani text-slate-400 text-lg md:text-xl mb-8 max-w-xl mx-auto">Compete in elite tournaments. Win real prizes. Rise to the top.</p>
+        <div class="flex flex-wrap gap-3 justify-center">
+          <button class="btn-neon px-8 py-3 rounded-xl text-sm" onclick="showSection('tournaments')">BROWSE TOURNAMENTS</button>
+          <button class="btn-outline px-8 py-3 rounded-xl" onclick="showSection('wallet')">ADD MONEY</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+      <div class="glass rounded-xl p-4 text-center">
+        <div class="font-orbitron text-2xl font-black neon-text" id="stat-tournaments">12</div>
+        <div class="font-rajdhani text-slate-500 text-sm mt-1">TOURNAMENTS</div>
+      </div>
+      <div class="glass rounded-xl p-4 text-center">
+        <div class="font-orbitron text-2xl font-black" style="color:#22d3ee;" id="stat-players">340+</div>
+        <div class="font-rajdhani text-slate-500 text-sm mt-1">PLAYERS</div>
+      </div>
+      <div class="glass rounded-xl p-4 text-center">
+        <div class="font-orbitron text-2xl font-black" style="color:#4ade80;" id="stat-prize">₹50K</div>
+        <div class="font-rajdhani text-slate-500 text-sm mt-1">PRIZE POOL</div>
+      </div>
+      <div class="glass rounded-xl p-4 text-center">
+        <div class="font-orbitron text-2xl font-black" style="color:#f0abfc;">24/7</div>
+        <div class="font-rajdhani text-slate-500 text-sm mt-1">SUPPORT</div>
+      </div>
+    </div>
+
+    <div class="mb-4 flex items-center justify-between">
+      <h2 class="font-orbitron font-bold text-lg text-white">FEATURED <span class="neon-text">TOURNAMENTS</span></h2>
+      <button class="btn-outline px-4 py-2 rounded-lg text-xs" onclick="showSection('tournaments')">VIEW ALL</button>
+    </div>
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" id="home-tournament-grid"></div>
+  </section>
+
+  <!-- TOURNAMENTS -->
+  <section id="section-tournaments" class="page-section">
+    <div class="mt-6 mb-6 flex items-center justify-between flex-wrap gap-3">
+      <h2 class="font-orbitron font-bold text-xl text-white">ALL <span class="neon-text">TOURNAMENTS</span></h2>
+      <div class="flex gap-2">
+        <button class="filter-btn btn-outline px-3 py-1.5 rounded-lg text-xs active-filter" onclick="filterTournaments('all',this)">ALL</button>
+        <button class="filter-btn btn-outline px-3 py-1.5 rounded-lg text-xs" onclick="filterTournaments('upcoming',this)">UPCOMING</button>
+        <button class="filter-btn btn-outline px-3 py-1.5 rounded-lg text-xs" onclick="filterTournaments('live',this)">LIVE</button>
+      </div>
+    </div>
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5" id="tournament-grid"></div>
+  </section>
+
+  <!-- WALLET -->
+  <section id="section-wallet" class="page-section">
+    <div class="mt-6 mb-6">
+      <h2 class="font-orbitron font-bold text-xl text-white">MY <span class="neon-text">WALLET</span></h2>
+    </div>
+    <div id="wallet-login-prompt" class="text-center py-16 glass rounded-2xl hide">
+      <svg class="mx-auto mb-4 opacity-30" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.5"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4Z"/></svg>
+      <p class="font-rajdhani text-slate-400 mb-4 text-lg">Login to access your wallet</p>
+      <button class="btn-neon px-6 py-2.5 rounded-xl" onclick="openModal('auth-modal')">LOGIN NOW</button>
+    </div>
+    <div id="wallet-content" class="hide">
+      <div class="balance-card p-6 mb-6">
+        <div class="flex items-center justify-between mb-4">
+          <div>
+            <p class="font-rajdhani text-slate-400 text-sm tracking-wider uppercase">Total Balance</p>
+            <div class="font-orbitron font-black text-4xl text-white mt-1">₹<span id="wallet-balance-big">0</span></div>
+          </div>
+          <div class="w-16 h-16 rounded-2xl flex items-center justify-center" style="background:rgba(168,85,247,0.15);border:1px solid rgba(168,85,247,0.3);">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#a855f7" stroke-width="1.5"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4Z"/></svg>
+          </div>
+        </div>
+        <div class="flex gap-3">
+          <button class="btn-neon flex-1 py-3 rounded-xl text-xs" onclick="openModal('add-money-modal')">+ ADD MONEY</button>
+          <button class="btn-outline flex-1 py-3 rounded-xl text-xs" onclick="openWithdrawModal()">WITHDRAW</button>
+        </div>
+        <button class="btn-outline w-full py-2.5 rounded-xl mt-3 text-xs" style="color:var(--cyan);border-color:rgba(34,211,238,0.4);" onclick="loadTransactions()">VIEW HISTORY</button>
+      </div>
+      <div class="glass rounded-2xl p-5">
+        <h3 class="font-orbitron text-sm font-bold text-white mb-4">TRANSACTION HISTORY</h3>
+        <div id="transaction-list">
+          <div class="text-center py-8 text-slate-600 font-rajdhani">No transactions yet</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- PROFILE -->
+  <section id="section-profile" class="page-section">
+    <div class="mt-6 mb-6">
+      <h2 class="font-orbitron font-bold text-xl text-white">MY <span class="neon-text">PROFILE</span></h2>
+    </div>
+    <div id="profile-login-prompt" class="text-center py-16 glass rounded-2xl hide">
+      <svg class="mx-auto mb-4 opacity-30" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.5"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+      <p class="font-rajdhani text-slate-400 mb-4 text-lg">Login to view your profile</p>
+      <button class="btn-neon px-6 py-2.5 rounded-xl" onclick="openModal('auth-modal')">LOGIN NOW</button>
+    </div>
+    <div id="profile-content" class="hide">
+      <div class="glass rounded-2xl p-6 mb-5">
+        <div class="flex items-center gap-5">
+          <div class="w-20 h-20 rounded-2xl flex items-center justify-center font-orbitron font-black text-2xl neon-text" style="background:linear-gradient(135deg,rgba(168,85,247,0.2),rgba(34,211,238,0.1));border:2px solid rgba(168,85,247,0.3);" id="profile-avatar-text">?</div>
+          <div class="flex-1">
+            <div class="font-orbitron font-bold text-lg text-white" id="profile-username-display">--</div>
+            <div class="font-rajdhani text-slate-400 text-sm" id="profile-email-display">--</div>
+            <div class="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md" style="background:rgba(74,222,128,0.1);border:1px solid rgba(74,222,128,0.2);">
+              <span class="w-1.5 h-1.5 rounded-full bg-green-400"></span>
+              <span class="font-rajdhani text-xs text-green-400">ACTIVE PLAYER</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="glass rounded-2xl p-6 mb-5">
+        <h3 class="font-orbitron text-sm font-bold text-white mb-4">EDIT PROFILE</h3>
+        <div class="space-y-4">
+          <div>
+            <label class="font-rajdhani text-xs text-slate-400 tracking-wider uppercase block mb-2">Username</label>
+            <input type="text" id="edit-username" class="neon-input" placeholder="Your username" />
+          </div>
+          <div>
+            <label class="font-rajdhani text-xs text-slate-400 tracking-wider uppercase block mb-2">Free Fire UID</label>
+            <input type="text" id="edit-ff-uid" class="neon-input" placeholder="Free Fire Character UID" />
+          </div>
+          <button class="btn-neon w-full py-3 rounded-xl text-xs" onclick="saveProfile()">SAVE CHANGES</button>
+        </div>
+      </div>
+      <div class="grid grid-cols-2 gap-4 mb-5">
+        <div class="glass rounded-xl p-4 text-center">
+          <div class="font-orbitron font-black text-xl neon-text" id="profile-joined">0</div>
+          <div class="font-rajdhani text-slate-500 text-xs mt-1">TOURNAMENTS JOINED</div>
+        </div>
+        <div class="glass rounded-xl p-4 text-center">
+          <div class="font-orbitron font-black text-xl" style="color:#4ade80;">₹<span id="profile-balance">0</span></div>
+          <div class="font-rajdhani text-slate-500 text-xs mt-1">WALLET BALANCE</div>
+        </div>
+      </div>
+
+      <!-- MY TOURNAMENTS Section -->
+      <div class="glass rounded-2xl p-5 mb-5">
+        <h3 class="font-orbitron text-sm font-bold text-white mb-4">MY <span class="neon-text">TOURNAMENTS</span></h3>
+        <div class="flex gap-1 p-1 rounded-xl mb-4" style="background:var(--surface);border:1px solid var(--border);">
+          <button class="my-t-tab flex-1 py-2 rounded-lg font-orbitron text-xs transition-all active-my-tab" onclick="switchMyTournamentTab('upcoming',this)">UPCOMING</button>
+          <button class="my-t-tab flex-1 py-2 rounded-lg font-orbitron text-xs transition-all" onclick="switchMyTournamentTab('ongoing',this)">ONGOING</button>
+          <button class="my-t-tab flex-1 py-2 rounded-lg font-orbitron text-xs transition-all" onclick="switchMyTournamentTab('complete',this)">COMPLETE</button>
+        </div>
+        <div id="my-tournaments-list">
+          <div class="text-center py-8 text-slate-600 font-rajdhani">Login karke dekhein apne tournaments</div>
+        </div>
+      </div>
+
+      <button class="btn-danger w-full py-3 rounded-xl" onclick="handleLogout()">LOGOUT</button>
+    </div>
+  </section>
+
+</main>
+
+<!-- ===== MOBILE NAV ===== -->
+<nav class="mobile-nav md:hidden" id="mobile-nav" style="display:none;">
+  <div class="flex justify-around items-center">
+    <div class="mobile-nav-item active" onclick="showSection('home')" data-section="home">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+      <span>HOME</span>
+    </div>
+    <div class="mobile-nav-item" onclick="showSection('tournaments')" data-section="tournaments">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2z"/></svg>
+      <span>EVENTS</span>
+    </div>
+    <div class="mobile-nav-item" onclick="showSection('wallet')" data-section="wallet">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4Z"/></svg>
+      <span>WALLET</span>
+    </div>
+    <div class="mobile-nav-item" onclick="showSection('profile')" data-section="profile">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+      <span>PROFILE</span>
+    </div>
+  </div>
+</nav>
+
+<!-- ===== MODALS ===== -->
+
+<!-- Auth Modal -->
+<div class="modal-overlay hide" id="auth-modal">
+  <div class="modal-box p-6">
+    <div class="text-center mb-6">
+      <h3 class="font-orbitron font-bold text-lg text-white mb-1">WELCOME TO <span class="neon-text">THE MAFIA</span></h3>
+      <p class="font-rajdhani text-slate-500 text-sm">Google se login/register karo — ek click mein</p>
+    </div>
+    <button id="google-signin-btn" class="w-full py-3.5 rounded-xl flex items-center justify-center gap-3 transition-all mb-3"
+      style="background:#fff;color:#1f1f1f;font-family:'Orbitron',sans-serif;font-size:0.75rem;font-weight:700;letter-spacing:0.05em;border:none;cursor:pointer;"
+      onclick="handleGoogleLogin()">
+      <svg width="20" height="20" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/><path fill="none" d="M0 0h48v48H0z"/></svg>
+      GOOGLE SE LOGIN KARO
+    </button>
+    <button class="btn-outline w-full py-2.5 rounded-xl mt-2" onclick="closeModal('auth-modal')">CANCEL</button>
+  </div>
+</div>
+
+<!-- Add Money Modal -->
+<div class="modal-overlay hide" id="add-money-modal">
+  <div class="modal-box p-6">
+    <div class="flex items-center justify-between mb-5">
+      <h3 class="font-orbitron font-bold text-base text-white">ADD <span class="neon-text">MONEY</span></h3>
+      <button class="text-slate-500 hover:text-white transition-colors" onclick="closeModal('add-money-modal')">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <p class="font-rajdhani text-slate-400 text-sm mb-4">Select or enter deposit amount</p>
+    <div class="grid grid-cols-4 gap-2 mb-4">
+      <button class="amount-btn" onclick="selectAmount(100,this)">₹100</button>
+      <button class="amount-btn" onclick="selectAmount(200,this)">₹200</button>
+      <button class="amount-btn" onclick="selectAmount(500,this)">₹500</button>
+      <button class="amount-btn" onclick="selectAmount(1000,this)">₹1K</button>
+    </div>
+    <input type="number" id="custom-amount" class="neon-input mb-4" placeholder="Custom amount (₹)" min="10"
+      oninput="document.querySelectorAll('.amount-btn').forEach(b=>b.classList.remove('selected'));selectedAmount=parseInt(this.value)||0;" />
+
+    <div class="rounded-xl p-4 mb-4 text-center" style="background:rgba(168,85,247,0.05);border:1px solid rgba(168,85,247,0.15);">
+      <p class="font-orbitron text-xs text-purple-300 mb-3 tracking-wider">SCAN QR CODE TO PAY</p>
+      <div class="qr-container mx-auto mb-3" style="width:fit-content;" id="payment-qr-wrap">
+        <svg width="150" height="150" viewBox="0 0 150 150" xmlns="http://www.w3.org/2000/svg">
+          <rect width="150" height="150" fill="white"/>
+          <rect x="10" y="10" width="40" height="40" fill="none" stroke="#000" stroke-width="4"/>
+          <rect x="16" y="16" width="28" height="28" fill="#000"/>
+          <rect x="20" y="20" width="20" height="20" fill="white"/>
+          <rect x="25" y="25" width="10" height="10" fill="#000"/>
+          <rect x="100" y="10" width="40" height="40" fill="none" stroke="#000" stroke-width="4"/>
+          <rect x="106" y="16" width="28" height="28" fill="#000"/>
+          <rect x="110" y="20" width="20" height="20" fill="white"/>
+          <rect x="115" y="25" width="10" height="10" fill="#000"/>
+          <rect x="10" y="100" width="40" height="40" fill="none" stroke="#000" stroke-width="4"/>
+          <rect x="16" y="106" width="28" height="28" fill="#000"/>
+          <rect x="20" y="110" width="20" height="20" fill="white"/>
+          <rect x="25" y="115" width="10" height="10" fill="#000"/>
+          <rect x="60" y="10" width="6" height="6" fill="#000"/><rect x="70" y="10" width="6" height="6" fill="#000"/>
+          <rect x="80" y="10" width="6" height="6" fill="#000"/><rect x="60" y="20" width="6" height="6" fill="#000"/>
+          <rect x="75" y="20" width="6" height="6" fill="#000"/><rect x="60" y="30" width="6" height="6" fill="#000"/>
+          <rect x="70" y="30" width="6" height="6" fill="#000"/><rect x="80" y="30" width="6" height="6" fill="#000"/>
+          <rect x="10" y="60" width="6" height="6" fill="#000"/><rect x="20" y="60" width="6" height="6" fill="#000"/>
+          <rect x="30" y="65" width="6" height="6" fill="#000"/><rect x="10" y="70" width="6" height="6" fill="#000"/>
+          <rect x="25" y="70" width="6" height="6" fill="#000"/><rect x="10" y="80" width="6" height="6" fill="#000"/>
+          <rect x="20" y="80" width="6" height="6" fill="#000"/><rect x="30" y="75" width="6" height="6" fill="#000"/>
+          <rect x="60" y="60" width="6" height="6" fill="#000"/><rect x="70" y="65" width="6" height="6" fill="#000"/>
+          <rect x="80" y="60" width="6" height="6" fill="#000"/><rect x="65" y="72" width="6" height="6" fill="#000"/>
+          <rect x="78" y="75" width="6" height="6" fill="#000"/><rect x="60" y="80" width="6" height="6" fill="#000"/>
+          <rect x="75" y="80" width="6" height="6" fill="#000"/><rect x="100" y="60" width="6" height="6" fill="#000"/>
+          <rect x="110" y="65" width="6" height="6" fill="#000"/><rect x="120" y="60" width="6" height="6" fill="#000"/>
+          <rect x="130" y="65" width="6" height="6" fill="#000"/><rect x="105" y="75" width="6" height="6" fill="#000"/>
+          <rect x="120" y="72" width="6" height="6" fill="#000"/><rect x="132" y="78" width="6" height="6" fill="#000"/>
+          <rect x="100" y="82" width="6" height="6" fill="#000"/><rect x="110" y="80" width="6" height="6" fill="#000"/>
+          <rect x="125" y="83" width="6" height="6" fill="#000"/><rect x="60" y="100" width="6" height="6" fill="#000"/>
+          <rect x="70" y="105" width="6" height="6" fill="#000"/><rect x="80" y="100" width="6" height="6" fill="#000"/>
+          <rect x="65" y="115" width="6" height="6" fill="#000"/><rect x="78" y="110" width="6" height="6" fill="#000"/>
+          <rect x="60" y="122" width="6" height="6" fill="#000"/><rect x="73" y="125" width="6" height="6" fill="#000"/>
+          <rect x="83" y="120" width="6" height="6" fill="#000"/><rect x="100" y="100" width="6" height="6" fill="#000"/>
+          <rect x="110" y="103" width="6" height="6" fill="#000"/><rect x="122" y="100" width="6" height="6" fill="#000"/>
+          <rect x="133" y="105" width="6" height="6" fill="#000"/><rect x="105" y="113" width="6" height="6" fill="#000"/>
+          <rect x="118" y="115" width="6" height="6" fill="#000"/><rect x="130" y="112" width="6" height="6" fill="#000"/>
+          <rect x="100" y="124" width="6" height="6" fill="#000"/><rect x="112" y="128" width="6" height="6" fill="#000"/>
+          <rect x="126" y="126" width="6" height="6" fill="#000"/>
+          <text x="75" y="56" text-anchor="middle" font-family="Arial" font-size="7" font-weight="bold" fill="#a855f7">GooglePay</text>
+        </svg>
+      </div>
+      <p class="font-rajdhani text-slate-400 text-xs">UPI ID: <span class="text-purple-300 font-semibold dynamic-upi-id">azxesport@upi</span></p>
+      <p class="font-rajdhani text-slate-500 text-xs mt-1">Pay the exact amount selected above</p>
+    </div>
+
+    <div class="mb-4">
+      <label class="font-rajdhani text-xs text-slate-400 tracking-wider uppercase block mb-2">UTR Number <span class="text-red-400">*</span></label>
+      <input type="text" id="utr-number" class="neon-input" placeholder="Enter 12-digit UTR number after payment" maxlength="12" />
+    </div>
+    <div class="mb-5">
+      <label class="font-rajdhani text-xs text-slate-400 tracking-wider uppercase block mb-2">Payment Screenshot <span class="text-slate-600">(optional)</span></label>
+      <div class="border border-dashed border-slate-700 rounded-xl p-4 text-center cursor-pointer hover:border-purple-500 transition-colors" onclick="document.getElementById('screenshot-upload').click()">
+        <svg class="mx-auto mb-2 opacity-40" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+        <p class="font-rajdhani text-slate-500 text-sm" id="screenshot-label">Click to upload screenshot</p>
+        <input type="file" id="screenshot-upload" class="hide" accept="image/*" onchange="handleScreenshotSelect(event)" />
+      </div>
+    </div>
+    <button class="btn-neon w-full py-3.5 rounded-xl text-xs" onclick="submitDepositRequest()">SUBMIT DEPOSIT REQUEST</button>
+    <p class="font-rajdhani text-slate-600 text-xs text-center mt-3">Admin will verify and credit within 1–4 hours</p>
+  </div>
+</div>
+
+<!-- Room Credentials Modal -->
+<div class="modal-overlay hide" id="room-modal">
+  <div class="modal-box p-6">
+    <div class="text-center mb-6">
+      <div class="inline-flex items-center gap-2 px-4 py-2 rounded-full mb-3" style="background:rgba(74,222,128,0.1);border:1px solid rgba(74,222,128,0.2);">
+        <span class="w-2 h-2 rounded-full bg-green-400"></span>
+        <span class="font-orbitron text-xs text-green-400 tracking-wider">ROOM DETAILS</span>
+      </div>
+      <h3 class="font-orbitron font-bold text-lg text-white" id="room-modal-title">Tournament Room</h3>
+    </div>
+    <div class="space-y-3 mb-6">
+      <div class="rounded-xl p-4" style="background:var(--surface);border:1px solid var(--border);">
+        <p class="font-rajdhani text-slate-500 text-xs tracking-wider uppercase mb-1">Room ID</p>
+        <p class="font-orbitron text-white text-lg" id="room-id-display">--</p>
+      </div>
+      <div class="rounded-xl p-4" style="background:var(--surface);border:1px solid var(--border);">
+        <p class="font-rajdhani text-slate-500 text-xs tracking-wider uppercase mb-1">Password</p>
+        <p class="font-orbitron text-white text-lg" id="room-pass-display">--</p>
+      </div>
+    </div>
+    <p class="font-rajdhani text-slate-500 text-xs text-center mb-4">Room details are shared 10 minutes before match start.</p>
+    <button class="btn-outline w-full py-3 rounded-xl" onclick="closeModal('room-modal')">CLOSE</button>
+  </div>
+</div>
+
+<!-- Withdraw Modal -->
+<div class="modal-overlay hide" id="withdraw-modal">
+  <div class="modal-box p-6">
+    <div class="flex items-center justify-between mb-5">
+      <h3 class="font-orbitron font-bold text-base text-white">WITHDRAW <span class="neon-text">MONEY</span></h3>
+      <button class="text-slate-500 hover:text-white transition-colors" onclick="closeModal('withdraw-modal')">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <!-- Balance display -->
+    <div class="rounded-xl p-4 mb-4 flex items-center justify-between" style="background:rgba(168,85,247,0.07);border:1px solid rgba(168,85,247,0.2);">
+      <span class="font-rajdhani text-slate-400 text-sm">Available Balance</span>
+      <span class="font-orbitron font-bold text-purple-300" id="withdraw-avail-balance">₹0</span>
+    </div>
+    <!-- Amount -->
+    <div class="mb-4">
+      <label class="font-rajdhani text-xs text-slate-400 tracking-wider uppercase block mb-2">Withdrawal Amount <span class="text-red-400">*</span></label>
+      <input type="number" id="withdraw-amount" class="neon-input" placeholder="Enter amount (min ₹50)" min="50" />
+    </div>
+    <!-- UPI -->
+    <div class="mb-4">
+      <label class="font-rajdhani text-xs text-slate-400 tracking-wider uppercase block mb-2">Your UPI ID <span class="text-red-400">*</span></label>
+      <input type="text" id="withdraw-upi" class="neon-input" placeholder="yourname@upi / 9999999999@upi" />
+    </div>
+    <!-- Account holder name -->
+    <div class="mb-5">
+      <label class="font-rajdhani text-xs text-slate-400 tracking-wider uppercase block mb-2">Account Holder Name <span class="text-red-400">*</span></label>
+      <input type="text" id="withdraw-name" class="neon-input" placeholder="Name as per bank account" />
+    </div>
+    <!-- Info box -->
+    <div class="rounded-xl p-3 mb-5 flex gap-3" style="background:rgba(34,211,238,0.06);border:1px solid rgba(34,211,238,0.15);">
+      <svg class="flex-shrink-0 mt-0.5" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#22d3ee" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+      <p class="font-rajdhani text-cyan-400 text-xs leading-relaxed">Minimum withdrawal: ₹50. Processed within 24 hours. UPI ID verify karke submit karo.</p>
+    </div>
+    <button class="btn-neon w-full py-3.5 rounded-xl text-xs" onclick="submitWithdrawal()">SUBMIT WITHDRAWAL REQUEST</button>
+    <p class="font-rajdhani text-slate-600 text-xs text-center mt-3">Admin verify karke 24 hrs mein transfer karega</p>
+  </div>
+</div>
+
+<!-- Join Confirm Modal -->
+<div class="modal-overlay hide" id="join-modal">
+  <div class="modal-box p-6">
+    <h3 class="font-orbitron font-bold text-base text-white mb-2">JOIN <span class="neon-text">TOURNAMENT</span></h3>
+    <p class="font-rajdhani text-slate-400 text-sm mb-4" id="join-modal-desc">Confirm your entry</p>
+    <div class="rounded-xl p-4 mb-4" style="background:var(--surface);border:1px solid var(--border);">
+      <div class="flex justify-between mb-2">
+        <span class="font-rajdhani text-slate-400 text-sm">Entry Fee</span>
+        <span class="font-orbitron text-white text-sm" id="join-fee-display">₹0</span>
+      </div>
+      <div class="flex justify-between">
+        <span class="font-rajdhani text-slate-400 text-sm">Your Balance</span>
+        <span class="font-orbitron text-sm" style="color:#4ade80;">₹<span id="join-balance-display">0</span></span>
+      </div>
+    </div>
+    <div class="mb-4">
+      <label class="font-rajdhani text-xs text-slate-400 tracking-wider uppercase block mb-2">Free Fire Name <span class="text-red-400">*</span></label>
+      <input type="text" id="join-ff-name" class="neon-input" placeholder="Apna Free Fire in-game name bharo" />
+    </div>
+    <div class="flex gap-3">
+      <button class="btn-outline flex-1 py-3 rounded-xl" onclick="closeModal('join-modal')">CANCEL</button>
+      <button class="btn-neon flex-1 py-3 rounded-xl text-xs" onclick="confirmJoin()">CONFIRM JOIN</button>
+    </div>
+  </div>
+</div>
+
+<!-- Tournament Detail Modal (rules/room/results) -->
+<div class="modal-overlay hide" id="tournament-detail-modal">
+  <div class="modal-box p-6">
+    <div class="flex items-center justify-between mb-5">
+      <div>
+        <h3 class="font-orbitron font-bold text-base text-white" id="td-name">Tournament</h3>
+        <span id="td-status-badge" class="mt-1 inline-block"></span>
+      </div>
+      <button class="text-slate-500 hover:text-white transition-colors" onclick="closeModal('tournament-detail-modal')">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div id="td-content"></div>
+  </div>
+</div>
+
+<!-- ===== JAVASCRIPT ENGINE ===== -->
+<script>
+// ==================== STATE ====================
+let currentUser = null;
+let selectedAmount = 0;
+let currentJoinTournament = null;
+let tournaments = [];
+
+// Helper: get firebase refs safely
+function fb() { return window._fb || null; }
+
+// ==================== INIT ====================
+window.addEventListener('DOMContentLoaded', () => {
+  if (typeof window._setupAuthListener === 'function') window._setupAuthListener();
+  const msgs = ['Initializing...', 'Loading Firebase...', 'Connecting servers...', 'Almost ready...'];
+  let i = 0;
+  const msgEl = document.getElementById('splash-msg');
+  const msgInterval = setInterval(() => { if (++i < msgs.length) msgEl.textContent = msgs[i]; }, 500);
+
+  // Splash max 2.5s — stuck nahi rahega
+  setTimeout(() => {
+    clearInterval(msgInterval);
+    dismissSplash();
+  }, 2500);
+
+  // Agar Firebase bahut jaldi ready ho jaaye toh bhi splash dismiss karo
+  setTimeout(() => {
+    const splash = document.getElementById('splash');
+    if (splash && splash.style.display !== 'none' && splash.style.opacity !== '0') {
+      dismissSplash();
+    }
+  }, 3500);
+
+  loadTournaments();
+  loadPaymentSettings();
+});
+
+async function loadTournaments() {
+  try {
+    const snap = await _db.collection('tournaments').get();
+    tournaments = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  } catch(e) {
+    tournaments = [];
+  }
+  renderTournaments();
+  renderHomeTournaments();
+}
+
+function dismissSplash() {
+  const splash = document.getElementById('splash');
+  splash.style.opacity = '0';
+  setTimeout(() => {
+    splash.style.display = 'none';
+    document.getElementById('main-header').style.display = 'block';
+    document.getElementById('main-content').style.display = 'block';
+    document.getElementById('mobile-nav').style.display = 'flex';
+  }, 600);
+}
+
+// ==================== SECTION NAV ====================
+function showSection(name) {
+  document.querySelectorAll('.page-section').forEach(s => s.classList.remove('active'));
+  document.getElementById('section-' + name).classList.add('active');
+  document.querySelectorAll('.nav-link').forEach(l => l.classList.toggle('active', l.dataset.section === name));
+  document.querySelectorAll('.mobile-nav-item').forEach(l => l.classList.toggle('active', l.dataset.section === name));
+  if (name === 'wallet') refreshWalletSection();
+  if (name === 'profile') refreshProfileSection();
+  if (name === 'tournaments') renderTournaments();
+}
+
+// ==================== AUTH UI ====================
+function updateAuthUI() {
+  const loginBtn = document.getElementById('header-login-btn');
+  const logoutBtn = document.getElementById('header-logout-btn');
+  const walletDisplay = document.getElementById('header-wallet-display');
+  if (currentUser) {
+    loginBtn.classList.add('hide');
+    logoutBtn.classList.remove('hide');
+    walletDisplay.style.display = 'flex';
+    document.getElementById('header-balance').textContent = '₹' + (currentUser.balance || 0);
+  } else {
+    loginBtn.classList.remove('hide');
+    logoutBtn.classList.add('hide');
+    walletDisplay.style.display = 'none';
+  }
+}
+
+// ==================== AUTH ====================
+async function handleGoogleLogin() {
+  const btn = document.getElementById('google-signin-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<div style="width:18px;height:18px;border:2px solid #ccc;border-top-color:#1f1f1f;border-radius:50%;animation:rotate 0.8s linear infinite;"></div> SIGNING IN...';
+
+  try {
+    const provider = new firebase.auth.GoogleAuthProvider();
+    const cred = await _auth.signInWithPopup(provider);
+    const user = cred.user;
+
+    // Check if user already exists in Firestore
+    const snap = await _db.collection('users').doc(user.uid).get();
+    if (!snap.exists) {
+      // New user — save to Firestore
+      const userData = {
+        uid: user.uid,
+        username: user.displayName || user.email.split('@')[0],
+        email: user.email,
+        ffUid: '',
+        balance: 0,
+        joined: [],
+        transactions: [],
+        createdAt: new Date().toISOString()
+      };
+      try { await _db.collection('users').doc(user.uid).set(userData); } catch(e) {}
+      showToast('✓ Welcome ' + userData.username + '! Account ban gaya!', 'success');
+    } else {
+      showToast('✓ Welcome back ' + (snap.data().username || user.displayName) + '!', 'success');
+    }
+    closeModal('auth-modal');
+  } catch(e) {
+    if (e.code === 'auth/popup-closed-by-user') {
+      showToast('Login cancel kar diya', 'info');
+    } else if (e.code === 'auth/popup-blocked') {
+      showToast('Popup block ho gaya — browser mein popup allow karo', 'error');
+    } else {
+      showToast('Google login error: ' + e.message, 'error');
+    }
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<svg width="20" height="20" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/><path fill="none" d="M0 0h48v48H0z"/></svg> GOOGLE SE LOGIN KARO';
+  }
+}
+
+async function handleLogout() {
+  try { await _auth.signOut(); } catch(e) {}
+  currentUser = null;
+  updateAuthUI();
+  refreshWalletSection();
+  refreshProfileSection();
+  showSection('home');
+  showToast('Logged out', 'info');
+}
+
+// ==================== WALLET ====================
+function refreshWalletSection() {
+  const prompt = document.getElementById('wallet-login-prompt');
+  const content = document.getElementById('wallet-content');
+  if (currentUser) {
+    prompt.classList.add('hide');
+    content.classList.remove('hide');
+    document.getElementById('wallet-balance-big').textContent = currentUser.balance || 0;
+    loadTransactions();
+  } else {
+    prompt.classList.remove('hide');
+    content.classList.add('hide');
+  }
+}
+
+function loadTransactions() {
+  if (!currentUser) return;
+  const list = document.getElementById('transaction-list');
+  const txs = currentUser.transactions || [];
+  if (!txs.length) {
+    list.innerHTML = '<div class="text-center py-8 text-slate-600 font-rajdhani">Koi transaction nahi hai abhi</div>';
+    return;
+  }
+  const typeIcon = { deposit: '↑', withdraw: '↓', entry: '🎮', credit: '✓' };
+  list.innerHTML = txs.slice().reverse().map(tx => `
+    <div class="tx-row">
+      <div>
+        <div class="font-rajdhani font-semibold text-white text-sm">${tx.desc}</div>
+        <div class="font-rajdhani text-slate-500 text-xs">${tx.date} • <span style="color:${tx.status==='pending'?'#fbbf24':tx.status==='failed'?'#f87171':'#4ade80'}">${tx.status||'completed'}</span></div>
+      </div>
+      <div class="font-orbitron text-sm font-bold ${tx.amount > 0 ? 'text-green-400' : 'text-red-400'}">${tx.amount > 0 ? '+' : ''}₹${Math.abs(tx.amount)}</div>
+    </div>
+  `).join('');
+}
+
+function selectAmount(amt, btn) {
+  selectedAmount = amt;
+  document.querySelectorAll('.amount-btn').forEach(b => b.classList.remove('selected'));
+  btn.classList.add('selected');
+  document.getElementById('custom-amount').value = '';
+}
+
+function handleScreenshotSelect(e) {
+  const file = e.target.files[0];
+  if (file) document.getElementById('screenshot-label').textContent = '✓ ' + file.name;
+}
+
+async function submitDepositRequest() {
+  if (!currentUser) { showToast('Pehle login karo', 'error'); return; }
+  const amt = selectedAmount || parseInt(document.getElementById('custom-amount').value) || 0;
+  const utr = document.getElementById('utr-number').value.trim();
+
+  if (!amt || amt < 10) { showToast('Valid amount select karo', 'error'); return; }
+  if (!utr) { showToast('UTR number bharo', 'error'); return; }
+  if (utr.length < 10) { showToast('UTR number 10+ digits ka hona chahiye', 'error'); return; }
+
+  const tx = {
+    desc: 'Deposit Request ₹' + amt,
+    amount: 0,
+    date: new Date().toLocaleDateString('en-IN'),
+    status: 'pending',
+    utr,
+    type: 'deposit',
+    requestedAmt: amt
+  };
+
+  currentUser.transactions = currentUser.transactions || [];
+  currentUser.transactions.push(tx);
+
+  try {
+    await _db.collection('users').doc(currentUser.uid).update({ transactions: currentUser.transactions });
+    await _db.collection('depositRequests').add({
+      uid: currentUser.uid,
+      username: currentUser.username,
+      email: currentUser.email,
+      amount: amt,
+      utr,
+      status: 'pending',
+      createdAt: new Date().toISOString()
+    });
+  } catch(e) { console.error(e); }
+
+  closeModal('add-money-modal');
+  selectedAmount = 0;
+  document.getElementById('utr-number').value = '';
+  document.getElementById('custom-amount').value = '';
+  document.querySelectorAll('.amount-btn').forEach(b => b.classList.remove('selected'));
+  showToast('Deposit request submit ho gayi! 1-4 hrs mein credit hogi.', 'success');
+  loadTransactions();
+}
+
+// ==================== WITHDRAWAL ====================
+function openWithdrawModal() {
+  if (!currentUser) { openModal('auth-modal'); showToast('Pehle login karo', 'info'); return; }
+  document.getElementById('withdraw-avail-balance').textContent = '₹' + (currentUser.balance || 0);
+  document.getElementById('withdraw-amount').value = '';
+  document.getElementById('withdraw-upi').value = '';
+  document.getElementById('withdraw-name').value = '';
+  openModal('withdraw-modal');
+}
+
+async function submitWithdrawal() {
+  if (!currentUser) return;
+  const amt = parseInt(document.getElementById('withdraw-amount').value) || 0;
+  const upi = document.getElementById('withdraw-upi').value.trim();
+  const name = document.getElementById('withdraw-name').value.trim();
+
+  if (!amt || amt < 50) { showToast('Minimum withdrawal ₹50 hai', 'error'); return; }
+  if ((currentUser.balance || 0) < amt) { showToast('Balance kam hai!', 'error'); return; }
+  if (!upi) { showToast('UPI ID bharo', 'error'); return; }
+  if (!name) { showToast('Account holder name bharo', 'error'); return; }
+
+  currentUser.balance -= amt;
+  const tx = {
+    desc: 'Withdrawal → ' + upi,
+    amount: -amt,
+    date: new Date().toLocaleDateString('en-IN'),
+    status: 'pending',
+    type: 'withdraw'
+  };
+  currentUser.transactions = currentUser.transactions || [];
+  currentUser.transactions.push(tx);
+
+  try {
+    await _db.collection('users').doc(currentUser.uid).update({
+      balance: currentUser.balance,
+      transactions: currentUser.transactions
+    });
+    await _db.collection('withdrawalRequests').add({
+      uid: currentUser.uid,
+      username: currentUser.username,
+      email: currentUser.email,
+      amount: amt,
+      upiId: upi,
+      accountName: name,
+      status: 'pending',
+      createdAt: new Date().toISOString()
+    });
+  } catch(e) { console.error(e); }
+
+  updateAuthUI();
+  document.getElementById('wallet-balance-big').textContent = currentUser.balance;
+  closeModal('withdraw-modal');
+  showToast('Withdrawal request submit! 24 hrs mein process hogi.', 'success');
+  loadTransactions();
+}
+
+// ==================== PROFILE ====================
+function refreshProfileSection() {
+  const prompt = document.getElementById('profile-login-prompt');
+  const content = document.getElementById('profile-content');
+  if (currentUser) {
+    prompt.classList.add('hide');
+    content.classList.remove('hide');
+    const initials = (currentUser.username || 'U').substring(0, 2).toUpperCase();
+    document.getElementById('profile-avatar-text').textContent = initials;
+    document.getElementById('profile-username-display').textContent = currentUser.username || '--';
+    document.getElementById('profile-email-display').textContent = currentUser.email || '--';
+    document.getElementById('edit-username').value = currentUser.username || '';
+    document.getElementById('edit-ff-uid').value = currentUser.ffUid || '';
+    document.getElementById('profile-joined').textContent = (currentUser.joined || []).length;
+    document.getElementById('profile-balance').textContent = currentUser.balance || 0;
+    renderMyTournaments(myTournamentTab);
+  } else {
+    prompt.classList.remove('hide');
+    content.classList.add('hide');
+  }
+}
+
+async function saveProfile() {
+  if (!currentUser) return;
+  const username = document.getElementById('edit-username').value.trim();
+  const ffUid = document.getElementById('edit-ff-uid').value.trim();
+  if (!username) { showToast('Username khali nahi ho sakta', 'error'); return; }
+  currentUser.username = username;
+  currentUser.ffUid = ffUid;
+  try {
+    await _db.collection('users').doc(currentUser.uid).update({ username, ffUid });
+  } catch(e) { console.error(e); }
+  refreshProfileSection();
+  updateAuthUI();
+  showToast('Profile save ho gaya!', 'success');
+}
+
+// ==================== TOURNAMENTS ====================
+let currentFilter = 'all';
+
+function renderTournaments(filter) {
+  if (filter) currentFilter = filter;
+  const grid = document.getElementById('tournament-grid');
+  const list = currentFilter === 'all' ? tournaments : tournaments.filter(t => t.status === currentFilter);
+  grid.innerHTML = list.length
+    ? list.map(t => tournamentCardHTML(t)).join('')
+    : '<div class="col-span-full text-center py-16 text-slate-600 font-rajdhani text-lg">Abhi koi tournament nahi hai. Jald aayenge! 🔥</div>';
+}
+
+function renderHomeTournaments() {
+  const grid = document.getElementById('home-tournament-grid');
+  if (!grid) return;
+  const featured = tournaments.filter(t => t.status !== 'completed').slice(0, 3);
+  grid.innerHTML = featured.length
+    ? featured.map(t => tournamentCardHTML(t)).join('')
+    : '<div class="col-span-full text-center py-12 text-slate-600 font-rajdhani text-base">Koi tournament abhi available nahi hai. Jald aayenge! 🔥</div>';
+}
+
+function tournamentCardHTML(t) {
+  const pct = Math.round(((t.filled||0) / (t.slots||1)) * 100);
+  const isJoined = currentUser && (currentUser.joined || []).includes(t.id);
+  const statusBadge = t.status === 'live' || t.status === 'ongoing'
+    ? `<span class="badge-live px-2 py-0.5 rounded font-orbitron uppercase flex items-center gap-1"><span class="live-dot" style="width:5px;height:5px;"></span>LIVE</span>`
+    : t.status === 'upcoming'
+    ? `<span class="badge-upcoming px-2 py-0.5 rounded font-orbitron uppercase">UPCOMING</span>`
+    : `<span class="badge-completed px-2 py-0.5 rounded font-orbitron uppercase">ENDED</span>`;
+
+  let joinBtn;
+  if (t.status === 'completed') {
+    joinBtn = `<button class="btn-outline w-full py-2.5 rounded-xl text-xs" onclick="openTournamentDetail('${t.id}')">VIEW RESULTS</button>`;
+  } else if (t.status === 'live' || t.status === 'ongoing') {
+    joinBtn = isJoined
+      ? `<button class="btn-neon w-full py-2.5 rounded-xl text-xs" onclick="openTournamentDetail('${t.id}')">VIEW ROOM ID</button>`
+      : `<button class="btn-outline w-full py-2.5 rounded-xl text-xs opacity-50 cursor-not-allowed" disabled>LIVE — JOIN CLOSED</button>`;
+  } else {
+    joinBtn = isJoined
+      ? `<button class="btn-outline w-full py-2.5 rounded-xl text-xs" onclick="openTournamentDetail('${t.id}')" style="color:var(--green);border-color:rgba(74,222,128,0.4);">✓ JOINED — VIEW RULES</button>`
+      : `<button class="btn-neon w-full py-2.5 rounded-xl text-xs" onclick="openJoinModal('${t.id}')">JOIN — ₹${t.entryFee}</button>`;
+  }
+
+  return `
+    <div class="tournament-card">
+      <div class="p-5">
+        <div class="flex items-start justify-between mb-3">
+          <div class="cursor-pointer" onclick="openTournamentDetail('${t.id}')">
+            <h3 class="font-orbitron font-bold text-white text-sm mb-1 hover:text-purple-400 transition-colors">${t.name}</h3>
+            <p class="font-rajdhani text-slate-500 text-xs">${t.mode} • ${t.map}</p>
+          </div>
+          ${statusBadge}
+        </div>
+        <div class="grid grid-cols-3 gap-2 mb-4">
+          <div class="rounded-lg p-2 text-center" style="background:rgba(168,85,247,0.06);border:1px solid rgba(168,85,247,0.12);">
+            <div class="font-orbitron text-xs font-bold text-purple-400">₹${t.entryFee}</div>
+            <div class="font-rajdhani text-slate-600 text-xs">ENTRY</div>
+          </div>
+          <div class="rounded-lg p-2 text-center" style="background:rgba(74,222,128,0.06);border:1px solid rgba(74,222,128,0.12);">
+            <div class="font-orbitron text-xs font-bold text-green-400">${t.prize}</div>
+            <div class="font-rajdhani text-slate-600 text-xs">PRIZE</div>
+          </div>
+          <div class="rounded-lg p-2 text-center" style="background:rgba(34,211,238,0.06);border:1px solid rgba(34,211,238,0.12);">
+            <div class="font-orbitron text-xs font-bold text-cyan-400">${t.slots}</div>
+            <div class="font-rajdhani text-slate-600 text-xs">SLOTS</div>
+          </div>
+        </div>
+        <div class="mb-3">
+          <div class="flex justify-between mb-1.5">
+            <span class="font-rajdhani text-slate-500 text-xs">${t.filled||0}/${t.slots} players</span>
+            <span class="font-rajdhani text-xs" style="color:${pct>=90?'#f87171':pct>=60?'#fbbf24':'#4ade80'}">${pct}%</span>
+          </div>
+          <div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>
+        </div>
+        <div class="flex items-center gap-1.5 mb-4">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          <span class="font-rajdhani text-slate-500 text-xs">${t.time||''}</span>
+        </div>
+        ${joinBtn}
+      </div>
+    </div>`;
+}
+
+function filterTournaments(filter, btn) {
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active-filter'));
+  btn.classList.add('active-filter');
+  renderTournaments(filter);
+}
+
+// ==================== JOIN ====================
+function openJoinModal(id) {
+  if (!currentUser) { openModal('auth-modal'); showToast('Pehle login karo', 'info'); return; }
+  currentJoinTournament = tournaments.find(t => t.id === id);
+  if (!currentJoinTournament) return;
+  document.getElementById('join-modal-desc').textContent = `"${currentJoinTournament.name}" mein join karo?`;
+  document.getElementById('join-fee-display').textContent = '₹' + currentJoinTournament.entryFee;
+  document.getElementById('join-balance-display').textContent = currentUser.balance || 0;
+  document.getElementById('join-ff-name').value = currentUser.ffName || '';
+  openModal('join-modal');
+}
+
+async function confirmJoin() {
+  if (!currentUser || !currentJoinTournament) return;
+  const ffName = document.getElementById('join-ff-name').value.trim();
+  if (!ffName) { showToast('Free Fire name bharo!', 'error'); return; }
+  const fee = currentJoinTournament.entryFee;
+  if ((currentUser.balance || 0) < fee) {
+    closeModal('join-modal');
+    showToast('Balance kam hai. Pehle add karo.', 'error');
+    openModal('add-money-modal');
+    return;
+  }
+  if ((currentUser.joined || []).includes(currentJoinTournament.id)) {
+    showToast('Pehle se join kar liya hai!', 'info');
+    closeModal('join-modal');
+    return;
+  }
+  currentUser.balance -= fee;
+  currentUser.joined = currentUser.joined || [];
+  currentUser.joined.push(currentJoinTournament.id);
+  currentUser.ffName = ffName;
+  currentUser.transactions = currentUser.transactions || [];
+  currentUser.transactions.push({
+    desc: 'Entry: ' + currentJoinTournament.name,
+    amount: -fee,
+    date: new Date().toLocaleDateString('en-IN'),
+    status: 'completed',
+    type: 'entry'
+  });
+  try {
+    await _db.collection('users').doc(currentUser.uid).update({
+      balance: currentUser.balance,
+      joined: currentUser.joined,
+      transactions: currentUser.transactions,
+      ffName
+    });
+    await _db.collection('tournaments').doc(currentJoinTournament.id).update({
+      filled: (currentJoinTournament.filled || 0) + 1
+    });
+    await _db.collection('tournaments').doc(currentJoinTournament.id)
+      .collection('participants').doc(currentUser.uid).set({
+        uid: currentUser.uid,
+        username: currentUser.username,
+        ffName,
+        ffUid: currentUser.ffUid || '',
+        joinedAt: new Date().toISOString()
+      });
+  } catch(e) { console.error('Join error:', e); }
+
+  currentJoinTournament.filled = (currentJoinTournament.filled || 0) + 1;
+  updateAuthUI();
+  closeModal('join-modal');
+  showToast(currentJoinTournament.name + ' mein join ho gaye!', 'success');
+  renderTournaments();
+  renderHomeTournaments();
+  renderMyTournaments(myTournamentTab);
+}
+
+// ==================== ROOM MODAL ====================
+function openRoomModal(id) {
+  if (!currentUser) { openModal('auth-modal'); showToast('Login karo room details dekhne ke liye', 'info'); return; }
+  const t = tournaments.find(t => t.id === id);
+  if (!t) return;
+  document.getElementById('room-modal-title').textContent = t.name;
+  document.getElementById('room-id-display').textContent = t.roomId || 'TBA — thodi der mein milega';
+  document.getElementById('room-pass-display').textContent = t.roomPass || 'TBA — thodi der mein milega';
+  openModal('room-modal');
+}
+
+// ==================== MODAL ====================
+function openModal(id) {
+  document.getElementById(id).classList.remove('hide');
+  document.body.style.overflow = 'hidden';
+}
+function closeModal(id) {
+  document.getElementById(id).classList.add('hide');
+  document.body.style.overflow = '';
+}
+document.addEventListener('click', e => {
+  if (e.target.classList.contains('modal-overlay')) closeModal(e.target.id);
+});
+
+// ==================== TOAST ====================
+function showToast(msg, type = 'info') {
+  const container = document.getElementById('toast-container');
+  const toast = document.createElement('div');
+  toast.className = `toast toast-${type}`;
+  const icons = { success: '✓', error: '✕', info: '●' };
+  toast.textContent = (icons[type] || '') + ' ' + msg;
+  container.appendChild(toast);
+  setTimeout(() => { toast.style.opacity = '0'; toast.style.transition = 'opacity 0.3s'; setTimeout(() => toast.remove(), 300); }, 3500);
+}
+
+// ==================== TOURNAMENT DETAIL MODAL ====================
+function openTournamentDetail(id) {
+  const t = tournaments.find(t => t.id === id);
+  if (!t) return;
+  document.getElementById('td-name').textContent = t.name;
+  const statusBadge = t.status === 'live' || t.status === 'ongoing'
+    ? `<span class="badge-live px-2 py-0.5 rounded font-orbitron text-xs flex items-center gap-1 inline-flex"><span class="live-dot" style="width:5px;height:5px;"></span>LIVE</span>`
+    : t.status === 'upcoming'
+    ? `<span class="badge-upcoming px-2 py-0.5 rounded font-orbitron text-xs">UPCOMING</span>`
+    : `<span class="badge-completed px-2 py-0.5 rounded font-orbitron text-xs">ENDED</span>`;
+  document.getElementById('td-status-badge').innerHTML = statusBadge;
+
+  const isJoined = currentUser && (currentUser.joined || []).includes(id);
+
+  if (t.status === 'upcoming') {
+    document.getElementById('td-content').innerHTML = `
+      <div class="rounded-xl p-4 mb-4" style="background:rgba(34,211,238,0.06);border:1px solid rgba(34,211,238,0.15);">
+        <p class="font-orbitron text-xs text-cyan-400 mb-3 tracking-wider">📋 RULES & REQUIREMENTS</p>
+        <div class="font-rajdhani text-slate-300 text-sm leading-relaxed whitespace-pre-wrap">${t.rules || 'Rules abhi update nahi hue. Soon aayenge!'}</div>
+      </div>
+      <div class="grid grid-cols-3 gap-2 mb-4">
+        <div class="rounded-lg p-3 text-center" style="background:rgba(168,85,247,0.06);border:1px solid rgba(168,85,247,0.12);">
+          <div class="font-orbitron text-xs font-bold text-purple-400">₹${t.entryFee}</div>
+          <div class="font-rajdhani text-slate-600 text-xs">ENTRY</div>
+        </div>
+        <div class="rounded-lg p-3 text-center" style="background:rgba(74,222,128,0.06);border:1px solid rgba(74,222,128,0.12);">
+          <div class="font-orbitron text-xs font-bold text-green-400">${t.prize}</div>
+          <div class="font-rajdhani text-slate-600 text-xs">PRIZE</div>
+        </div>
+        <div class="rounded-lg p-3 text-center" style="background:rgba(34,211,238,0.06);border:1px solid rgba(34,211,238,0.12);">
+          <div class="font-orbitron text-xs font-bold text-cyan-400">${t.slots}</div>
+          <div class="font-rajdhani text-slate-600 text-xs">SLOTS</div>
+        </div>
+      </div>
+      <div class="rounded-xl p-3 mb-4 flex gap-3" style="background:rgba(168,85,247,0.06);border:1px solid rgba(168,85,247,0.15);">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#a855f7" stroke-width="2" class="flex-shrink-0 mt-0.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        <p class="font-rajdhani text-purple-300 text-xs">Match Time: <strong>${t.time || 'TBA'}</strong> | Map: <strong>${t.map || 'N/A'}</strong> | Mode: <strong>${t.mode || 'N/A'}</strong></p>
+      </div>
+      ${isJoined
+        ? `<div class="rounded-xl p-3 text-center" style="background:rgba(74,222,128,0.08);border:1px solid rgba(74,222,128,0.2);"><span class="font-rajdhani text-green-400 text-sm">✓ Aap join kar chuke hain! Room details match se pehle milegi.</span></div>`
+        : `<button class="btn-neon w-full py-3 rounded-xl text-xs mt-2" onclick="closeModal('tournament-detail-modal');openJoinModal('${id}')">JOIN — ₹${t.entryFee}</button>`
+      }
+    `;
+  } else if (t.status === 'live' || t.status === 'ongoing') {
+    document.getElementById('td-content').innerHTML = `
+      <div class="rounded-xl p-4 mb-4" style="background:rgba(74,222,128,0.06);border:1px solid rgba(74,222,128,0.15);">
+        <p class="font-orbitron text-xs text-green-400 mb-3 tracking-wider">🎮 ROOM CREDENTIALS</p>
+        ${isJoined ? `
+          <div class="space-y-3">
+            <div class="rounded-lg p-3" style="background:var(--surface);border:1px solid var(--border);">
+              <p class="font-rajdhani text-slate-500 text-xs uppercase tracking-wider mb-1">Room ID</p>
+              <p class="font-orbitron text-white text-lg">${t.roomId || 'TBA — thodi der mein milega'}</p>
+            </div>
+            <div class="rounded-lg p-3" style="background:var(--surface);border:1px solid var(--border);">
+              <p class="font-rajdhani text-slate-500 text-xs uppercase tracking-wider mb-1">Password</p>
+              <p class="font-orbitron text-white text-lg">${t.roomPass || 'TBA — thodi der mein milega'}</p>
+            </div>
+          </div>
+          <p class="font-rajdhani text-slate-500 text-xs text-center mt-3">Room details 10 minute pehle share hoti hai.</p>
+        ` : `
+          <div class="text-center py-4">
+            <p class="font-rajdhani text-slate-400 text-sm">Room details sirf joined players ko milti hai.</p>
+            <p class="font-rajdhani text-red-400 text-xs mt-1">Yeh tournament live hai, ab join nahi ho sakta.</p>
+          </div>
+        `}
+      </div>
+    `;
+  } else {
+    // completed
+    const results = t.results || [];
+    document.getElementById('td-content').innerHTML = `
+      <div class="rounded-xl p-4 mb-4" style="background:rgba(251,191,36,0.06);border:1px solid rgba(251,191,36,0.15);">
+        <p class="font-orbitron text-xs text-yellow-400 mb-3 tracking-wider">🏆 KILL LEADERBOARD</p>
+        ${results.length ? `
+          <div class="space-y-2">
+            ${results.sort((a,b)=>b.kills-a.kills).map((r,i)=>`
+              <div class="flex items-center gap-3 rounded-lg p-2" style="background:var(--surface);border:1px solid var(--border);">
+                <span class="font-orbitron text-sm font-bold" style="color:${i===0?'#fbbf24':i===1?'#94a3b8':i===2?'#cd7c2f':'var(--muted)'};min-width:24px;">#${i+1}</span>
+                <div class="flex-1">
+                  <div class="font-rajdhani font-bold text-white text-sm">${r.name || r.ffName || '--'}</div>
+                </div>
+                <span class="font-orbitron text-xs font-bold text-red-400">${r.kills} kills</span>
+                ${r.prize ? `<span class="font-orbitron text-xs font-bold text-green-400">₹${r.prize}</span>` : ''}
+              </div>
+            `).join('')}
+          </div>
+        ` : `<p class="font-rajdhani text-slate-500 text-sm text-center py-4">Results abhi upload nahi hue.</p>`}
+      </div>
+    `;
+  }
+
+  openModal('tournament-detail-modal');
+}
+
+// ==================== MY TOURNAMENTS ====================
+let myTournamentTab = 'upcoming';
+
+function switchMyTournamentTab(tab, btn) {
+  myTournamentTab = tab;
+  document.querySelectorAll('.my-t-tab').forEach(b => b.classList.remove('active-my-tab'));
+  if (btn) btn.classList.add('active-my-tab');
+  renderMyTournaments(tab);
+}
+
+function renderMyTournaments(tab) {
+  const list = document.getElementById('my-tournaments-list');
+  if (!currentUser) {
+    list.innerHTML = '<div class="text-center py-8 text-slate-600 font-rajdhani">Pehle login karo</div>';
+    return;
+  }
+  const joined = currentUser.joined || [];
+  if (!joined.length) {
+    list.innerHTML = '<div class="text-center py-8 text-slate-600 font-rajdhani">Aapne abhi koi tournament join nahi kiya</div>';
+    return;
+  }
+
+  const statusMap = { upcoming: ['upcoming'], ongoing: ['live', 'ongoing'], complete: ['completed'] };
+  const validStatuses = statusMap[tab] || ['upcoming'];
+  const filtered = tournaments.filter(t => joined.includes(t.id) && validStatuses.includes(t.status));
+
+  if (!filtered.length) {
+    const msgs = { upcoming: 'Koi upcoming tournament nahi', ongoing: 'Abhi koi ongoing match nahi', complete: 'Koi completed tournament nahi' };
+    list.innerHTML = `<div class="text-center py-8 text-slate-600 font-rajdhani">${msgs[tab] || 'Koi tournament nahi'}</div>`;
+    return;
+  }
+
+  list.innerHTML = filtered.map(t => {
+    const iconMap = { upcoming: '⏳', live: '🔴', ongoing: '🎮', completed: '✅' };
+    const colorMap = { upcoming: 'var(--cyan)', live: 'var(--red)', ongoing: 'var(--green)', completed: 'var(--muted)' };
+    const icon = iconMap[t.status] || '📋';
+    const color = colorMap[t.status] || 'var(--muted)';
+    let hint = '';
+    if (tab === 'upcoming') hint = 'Click karo rules dekhne ke liye';
+    else if (tab === 'ongoing') hint = 'Click karo Room ID & Password dekhne ke liye';
+    else hint = 'Click karo results dekhne ke liye';
+
+    return `
+      <div class="my-t-card" onclick="openTournamentDetail('${t.id}')">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-3">
+            <span style="font-size:1.2rem;">${icon}</span>
+            <div>
+              <div class="font-orbitron text-xs font-bold text-white">${t.name}</div>
+              <div class="font-rajdhani text-slate-500 text-xs">${t.mode} • ${t.map}</div>
+            </div>
+          </div>
+          <div class="text-right">
+            <div class="font-orbitron text-xs font-bold" style="color:${color};">${t.prize}</div>
+            <div class="font-rajdhani text-slate-600 text-xs">${t.time || ''}</div>
+          </div>
+        </div>
+        <div class="mt-2 font-rajdhani text-xs text-slate-600">👆 ${hint}</div>
+      </div>
+    `;
+  }).join('');
+}
+
+// ==================== DYNAMIC UPI LOAD ====================
+async function loadPaymentSettings() {
+  try {
+    const snap = await _db.collection('settings').doc('payment').get();
+    if (snap.exists) {
+      const data = snap.data();
+      if (data.upiId) {
+        document.querySelectorAll('.dynamic-upi-id').forEach(el => el.textContent = data.upiId);
+      }
+      if (data.qrUrl) {
+        const qrWrap = document.getElementById('payment-qr-wrap');
+        if (qrWrap) qrWrap.innerHTML = `<img src="${data.qrUrl}" style="width:150px;height:150px;object-fit:contain;" alt="Payment QR"/>`;
+      }
+    }
+  } catch(e) { console.error('Payment settings load error:', e); }
+}
+
+// ==================== HELPERS ====================
+function setLoading(btnId, loading) {
+  const btn = document.getElementById(btnId);
+  if (!btn) return;
+  btn.disabled = loading;
+  btn.style.opacity = loading ? '0.6' : '1';
+}
+</script>
+</body>
+</html>
